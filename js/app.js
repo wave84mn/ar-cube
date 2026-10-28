@@ -12,7 +12,7 @@ const D2R = Math.PI / 180;
 const params = new URLSearchParams(location.search);
 
 // ---------------- settings (per-viewer convenience only) ----------------
-const DEFAULTS = { plinth: 'stone', size: 1, upright: true, shadows: true, debug: false, fov: 66 };
+const DEFAULTS = { plinth: 'stone', size: 1, upright: true, shadows: true, debug: false, fov: 66, view: 'auto' };
 const settings = Object.assign({}, DEFAULTS, readStore('arcube.settings') || {});
 if (params.has('debug')) settings.debug = true;
 if (params.has('fov')) settings.fov = +params.get('fov');
@@ -43,7 +43,8 @@ const bgScene = new THREE.Scene();
 const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 let videoTex = null;
 const bgMat = new THREE.MeshBasicMaterial({ toneMapped: false, depthTest: false, depthWrite: false });
-bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat);
+bgScene.add(bgMesh);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
@@ -337,7 +338,12 @@ function intrinsics() {
 function updateProjection() {
   const W = glCanvas.width, H = glCanvas.height, vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh || !W || !H) return;
-  const s = Math.max(W / vw, H / vh);
+  // 'fill' crops the camera image to fill the screen; 'fit' shows the whole image (dark bars).
+  // 'auto' fills unless that would crop away more than ~20 % of the image in one direction.
+  const sFill = Math.max(W / vw, H / vh), sFit = Math.min(W / vw, H / vh);
+  const mode = settings.view === 'auto' ? (sFill / sFit > 1.25 ? 'fit' : 'fill') : settings.view;
+  const s = mode === 'fit' ? sFit : sFill;
+  view.mode = mode;
   const ox = (vw - W / s) / 2, oy = (vh - H / s) / 2;
   Object.assign(view, { W, H, vw, vh, s, ox, oy });
   const K = intrinsics();
@@ -345,7 +351,7 @@ function updateProjection() {
   const n = 5, f = 20000;
   camera.projectionMatrix.set(2 * fx / W, 0, 1 - 2 * cx / W, 0, 0, 2 * fy / H, 2 * cy / H - 1, 0, 0, 0, -(f + n) / (f - n), -2 * f * n / (f - n), 0, 0, -1, 0);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-  if (videoTex) { videoTex.repeat.set((W / s) / vw, (H / s) / vh); videoTex.offset.set(ox / vw, oy / vh); }
+  bgMesh.scale.set(vw * s / W, vh * s / H, 1);   // the camera image keeps its shape; bars or cropping as needed
 }
 
 // ---------------- main loop ----------------
@@ -602,7 +608,7 @@ function drawDebug() {
   const lines = [
     `fps ${fps.toFixed(0)}  track ${procMs.toFixed(1)} ms  ${region ? region.mode : ''} r${region ? region.radius : ''}`,
     `capture ${timing.capture.toFixed(1)}  read ${timing.read.toFixed(1)}  cv ${timing.track.toFixed(1)}  draw ${timing.render.toFixed(1)} ms`,
-    `video ${view.vw}x${view.vh}  proc ${PROC}  fov ${settings.fov}°  markers ${lastRes.markers.length}`,
+    `video ${view.vw}x${view.vh} ${view.mode || ''}  screen ${view.W}x${view.H}  proc ${PROC}  fov ${settings.fov}°  markers ${lastRes.markers.length}`,
     p ? `${active}: n ${p.n}  rms ${p.rms.toFixed(2)} px  z ${p.t[2].toFixed(0)} mm  base ${T.cube.base}` : 'no pose',
     `tilt sensor ${sensor.ok ? 'on' : 'off'}`,
   ];
@@ -625,7 +631,10 @@ $('#btnTurn').addEventListener('click', () => setYaw(place.yawTo + Math.PI / 2, 
 $('#btnFace').addEventListener('click', () => faceCamera(true));
 function bindSettingsUI() {
   const seg = $('#segPlinth');
+  const segV = $('#segView');
+  segV.addEventListener('click', e => { const v = e.target.closest('button')?.dataset.v; if (!v) return; settings.view = v; saveSettings(); updateProjection(); paint(); });
   const paint = () => {
+    for (const b of segV.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === settings.view));
     for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === settings.plinth));
     $('#rngSize').value = settings.size; $('#sizeVal').textContent = (+settings.size).toFixed(1) + '×';
     $('#chkUpright').checked = settings.upright; $('#chkShadow').checked = settings.shadows; $('#chkDebug').checked = settings.debug;
