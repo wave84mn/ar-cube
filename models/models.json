@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "id": "kula-standin",
+      "name": "Kula Rašića",
+      "subtitle": "Stand-in until the real model is added",
+      "file": "models/kula_standin.glb",
+      "fit": 0.94,
+      "description": "A simple stand-in tower for testing the cube: stone walls, hip roof, stairs to the door. It will be replaced by the 1:75 print model.",
+      "facts": { "Status": "Stand-in (massing only)", "Real size": "about 12 × 12 m, 17 m high" }
+    }
+  ]
+}
